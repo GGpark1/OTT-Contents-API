@@ -5,3 +5,4 @@ from .models import *
 
 admin.site.register(StreamPlatform)
 admin.site.register(WatchList)
+admin.site.register(Review)
