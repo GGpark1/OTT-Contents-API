@@ -19,4 +19,6 @@ from django.urls import path, include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('apps/', include('apps.urls')),
+    # 임시 로그인 페이지 제공
+    path('api-auth/', include('rest_framework.urls')),
 ]

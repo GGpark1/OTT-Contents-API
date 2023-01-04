@@ -4,6 +4,8 @@ from rest_framework import viewsets
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from rest_framework.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
 from .serializers import WatchListSerializer, StreamPlatformSerializer, ReviewSerializer
 from .models import WatchList, StreamPlatform, Review
@@ -13,6 +15,9 @@ from .models import WatchList, StreamPlatform, Review
 
 class ReviewCreate(generics.CreateAPIView):
     serializer_class = ReviewSerializer
+    # Validation error를 반환하기 위해 get_query를 정의해주어야 함(-> get 요청 수행)
+    # qeuryset을 정의하면 내부적으로 get_query 메소드를 생성하므로,queryset 객체를 만듦
+    queryset = Review.objects.all()
 
     def perform_create(self, serializer):
         pk = self.kwargs.get('pk')
@@ -20,10 +25,23 @@ class ReviewCreate(generics.CreateAPIView):
         # 제출 폼에 현재 pk값을 사전에 저장해둠
         # 2번 영화에 대한 리뷰를 작성한다면
         # 영화 항목이 자동으로 2로 부여됨
-        serializer.save(watchlist=movie)
+        review_user = self.request.user
+        review_queryset = Review.objects.filter(
+            watchlist=movie,
+            review_user=review_user)
+        # request에서 post 요청자를 식별함(-> user)
+        # post가 요청된 user, movie를 식별함
+        #   queryset이 없다면 -> None 반환(=False) -> if 통과
+        #   queryset이 있다면 -> True 반환 -> raise 발생
+
+        if review_queryset.exists():
+            raise ValidationError("You're review already exists")
+
+        serializer.save(watchlist=movie, review_user=review_user)
 
 
 class ReviewList(generics.ListAPIView):
+    permission_classes = [IsAuthenticatedOrReadOnly]
     serializer_class = ReviewSerializer
 
     def get_queryset(self):
@@ -34,6 +52,7 @@ class ReviewList(generics.ListAPIView):
 
 
 class ReviewDetail(generics.RetrieveUpdateDestroyAPIView):
+    permission_classes = [IsAuthenticatedOrReadOnly]
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
 
