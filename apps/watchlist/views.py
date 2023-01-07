@@ -7,6 +7,7 @@ from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
 from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
 
+from .permissions import IsAdminOrReadOnly, IsReviewUserOrReadOnly
 from .serializers import WatchListSerializer, StreamPlatformSerializer, ReviewSerializer
 from .models import WatchList, StreamPlatform, Review
 
@@ -14,6 +15,7 @@ from .models import WatchList, StreamPlatform, Review
 
 
 class ReviewCreate(generics.CreateAPIView):
+    permission_classes = [IsAuthenticated]
     serializer_class = ReviewSerializer
     # Validation error를 반환하기 위해 get_query를 정의해주어야 함(-> get 요청 수행)
     # qeuryset을 정의하면 내부적으로 get_query 메소드를 생성하므로,queryset 객체를 만듦
@@ -37,11 +39,20 @@ class ReviewCreate(generics.CreateAPIView):
         if review_queryset.exists():
             raise ValidationError("You're review already exists")
 
+        movie.number_rating += 1
+
+        if movie.number_rating == 1:
+            movie.avg_rating = serializer.validated_data['rating']
+        else:
+            movie.avg_rating = (
+                movie.avg_rating + serializer.validated_data['rating']) / movie.number_rating
+
+        movie.save()
         serializer.save(watchlist=movie, review_user=review_user)
 
 
 class ReviewList(generics.ListAPIView):
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    # permission_classes = [IsAuthenticated]
     serializer_class = ReviewSerializer
 
     def get_queryset(self):
@@ -52,17 +63,19 @@ class ReviewList(generics.ListAPIView):
 
 
 class ReviewDetail(generics.RetrieveUpdateDestroyAPIView):
-    permission_classes = [IsAuthenticatedOrReadOnly]
+    permission_classes = [IsReviewUserOrReadOnly]
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
 
 
 class StreamPlatformVS(viewsets.ModelViewSet):
+    permission_classes = [IsAdminOrReadOnly]
     queryset = StreamPlatform.objects.all()
     serializer_class = StreamPlatformSerializer
 
 
 class StreamPlatformListAV(APIView):
+    permission_classes = [IsAdminOrReadOnly]
 
     def get(self, request):
 
@@ -82,6 +95,7 @@ class StreamPlatformListAV(APIView):
 
 
 class StreamPlatformDetailAV(APIView):
+    permission_classes = [IsAdminOrReadOnly]
 
     def get(self, request, pk):
 
@@ -113,6 +127,7 @@ class StreamPlatformDetailAV(APIView):
 
 
 class WatchListAV(APIView):
+    permission_classes = [IsAdminOrReadOnly]
 
     def get(self, request):
         movies = WatchList.objects.all()
@@ -132,6 +147,7 @@ class WatchListAV(APIView):
 
 
 class WatchListDetailAV(APIView):
+    permission_classes = [IsAdminOrReadOnly]
 
     def get(self, request, pk):
         try:

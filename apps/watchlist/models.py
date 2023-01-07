@@ -17,9 +17,11 @@ class WatchList(models.Model):
 
     title = models.CharField(max_length=100)
     storyline = models.CharField(max_length=200)
-    platfrom = models.ForeignKey(
+    platform = models.ForeignKey(
         StreamPlatform, on_delete=models.CASCADE, related_name="watchlist")
     active = models.BooleanField(default=True)
+    avg_rating = models.FloatField(default=0)
+    number_rating = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -38,4 +40,4 @@ class Review(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return str(self.rating) + " | " + self.watchlist.title
+        return str(self.rating) + " | " + self.watchlist.title + " | " + str(self.review_user)
