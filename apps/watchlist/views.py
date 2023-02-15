@@ -1,21 +1,44 @@
 from rest_framework import generics
 from rest_framework import status
 from rest_framework import viewsets
+from rest_framework import filters
 
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework.exceptions import ValidationError
-from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.permissions import IsAuthenticated, IsAdminUser, IsAuthenticatedOrReadOnly
+from rest_framework.throttling import UserRateThrottle, AnonRateThrottle, ScopedRateThrottle
+from django_filters.rest_framework import DjangoFilterBackend
 
 from .permissions import IsAdminOrReadOnly, IsReviewUserOrReadOnly
 from .serializers import WatchListSerializer, StreamPlatformSerializer, ReviewSerializer
 from .models import WatchList, StreamPlatform, Review
+from .throttling import ReviewCreateThrottle, ReviewListThrottle
+from .pagination import WatchListPagination, WatchListLOPagination, WatchListCPagination
 
 # Create your views here.
 
 
+class UserReview(generics.ListAPIView):
+    serializer_class = ReviewSerializer
+    # throttle_classes = [ReviewListThrottle, AnonRateThrottle]
+
+    ### using url ###
+    # def get_queryset(self):
+    #     username = self.kwargs['username']
+    #     return Review.objects.filter(review_user__username=username)
+
+    ### using query parameters ###
+    def get_queryset(self):
+        username = self.request.query_params.get('username')
+        return Review.objects.filter(review_user__username=username)
+
+
 class ReviewCreate(generics.CreateAPIView):
+
     permission_classes = [IsAuthenticated]
+    throttle_classes = [ReviewCreateThrottle]
+
     serializer_class = ReviewSerializer
     # Validation error를 반환하기 위해 get_query를 정의해주어야 함(-> get 요청 수행)
     # qeuryset을 정의하면 내부적으로 get_query 메소드를 생성하므로,queryset 객체를 만듦
@@ -47,13 +70,18 @@ class ReviewCreate(generics.CreateAPIView):
             movie.avg_rating = (
                 movie.avg_rating + serializer.validated_data['rating']) / movie.number_rating
 
+        # watchlist model에 새로운 필드를 저장
         movie.save()
+        # review model에 새로운 데이터를 전달 및 저장
         serializer.save(watchlist=movie, review_user=review_user)
 
 
 class ReviewList(generics.ListAPIView):
     # permission_classes = [IsAuthenticated]
     serializer_class = ReviewSerializer
+    # throttle_classes = [ReviewListThrottle, AnonRateThrottle]
+    filter_backends = [DjangoFilterBackend]
+    filterset_fields = ['review_user__username', 'active']
 
     def get_queryset(self):
         pk = self.kwargs['pk']
@@ -64,6 +92,9 @@ class ReviewList(generics.ListAPIView):
 
 class ReviewDetail(generics.RetrieveUpdateDestroyAPIView):
     permission_classes = [IsReviewUserOrReadOnly]
+    throttle_classes = [ScopedRateThrottle]
+    throttle_scope = 'review-detail'
+
     queryset = Review.objects.all()
     serializer_class = ReviewSerializer
 
@@ -72,26 +103,6 @@ class StreamPlatformVS(viewsets.ModelViewSet):
     permission_classes = [IsAdminOrReadOnly]
     queryset = StreamPlatform.objects.all()
     serializer_class = StreamPlatformSerializer
-
-
-class StreamPlatformListAV(APIView):
-    permission_classes = [IsAdminOrReadOnly]
-
-    def get(self, request):
-
-        platform = StreamPlatform.objects.all()
-        serializer = StreamPlatformSerializer(
-            platform, many=True)
-        return Response(serializer.data)
-
-    def post(self, request):
-
-        serializer = StreamPlatformSerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
 class StreamPlatformDetailAV(APIView):
@@ -126,24 +137,17 @@ class StreamPlatformDetailAV(APIView):
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
-class WatchListAV(APIView):
+class WatchListGV(generics.ListCreateAPIView):
     permission_classes = [IsAdminOrReadOnly]
 
-    def get(self, request):
-        movies = WatchList.objects.all()
-        serializer = WatchListSerializer(
-            movies, many=True)
-        return Response(serializer.data)
-
-    def post(self, request):
-        serializer = WatchListSerializer(data=request.data)
-
-        if serializer.is_valid():
-            serializer.save()
-            return Response(serializer.data)
-
-        else:
-            return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+    queryset = WatchList.objects.all()
+    serializer_class = WatchListSerializer
+    filter_backends = [filters.SearchFilter,
+                       # filters.OrderingFilter
+                       ]
+    # ordering_fields = ['avg_rating']
+    search_fields = ['title', 'platform__name']
+    pagination_class = WatchListCPagination
 
 
 class WatchListDetailAV(APIView):
@@ -175,6 +179,26 @@ class WatchListDetailAV(APIView):
 
 
 #### legacy code ####
+
+# class WatchListAV(APIView):
+#     # permission_classes = [IsAuthenticated]
+#     permission_classes = [IsAdminOrReadOnly]
+
+#     def get(self, request):
+#         movies = WatchList.objects.all()
+#         serializer = WatchListSerializer(
+#             movies, many=True)
+#         return Response(serializer.data)
+
+#     def post(self, request):
+#         serializer = WatchListSerializer(data=request.data)
+
+#         if serializer.is_valid():
+#             serializer.save()
+#             return Response(serializer.data)
+
+#         else:
+#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 # @api_view(['GET', 'POST'])
 # def movie_list(request):
@@ -259,3 +283,22 @@ class WatchListDetailAV(APIView):
     #             return Response(serializer.data)
     #         else:
     #             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+# class StreamPlatformListAV(APIView):
+#     permission_classes = [IsAdminOrReadOnly]
+
+#     def get(self, request):
+
+#         platform = StreamPlatform.objects.all()
+#         serializer = StreamPlatformSerializer(
+#             platform, many=True)
+#         return Response(serializer.data)
+
+#     def post(self, request):
+
+#         serializer = StreamPlatformSerializer(data=request.data)
+#         if serializer.is_valid():
+#             serializer.save()
+#             return Response(serializer.data)
+#         else:
+#             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

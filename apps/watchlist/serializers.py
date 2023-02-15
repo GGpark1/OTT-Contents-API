@@ -14,9 +14,13 @@ class ReviewSerializer(serializers.ModelSerializer):
 class WatchListSerializer(serializers.ModelSerializer):
     # nested serializer
     # 영화가 가지고 있는 review들을 출력함(1:N)
-    reviews = ReviewSerializer(
-        many=True,
-        read_only=True)
+    # reviews = ReviewSerializer(
+    #     many=True,
+    #     read_only=True)
+
+    # platform을 id가 아니라 name으로 반환하기
+    platform = serializers.SlugRelatedField(queryset=StreamPlatform.objects.all(),
+                                            slug_field='name')
 
     class Meta:
         model = WatchList
